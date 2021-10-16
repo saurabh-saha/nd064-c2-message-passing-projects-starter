@@ -3,19 +3,22 @@ from datetime import datetime, timedelta
 from typing import Dict, List
 
 from app import db
-from app.udaconnect.models import Connection, Location, Person
+from app.udaconnect.models import Location, Connection
 from app.udaconnect.schemas import ConnectionSchema, LocationSchema, PersonSchema
 from geoalchemy2.functions import ST_AsText, ST_Point
 from sqlalchemy.sql import text
 
-logging.basicConfig(level=logging.WARNING)
+import requests
+import json
+
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("udaconnect-api")
 
 
 class ConnectionService:
     @staticmethod
     def find_contacts(person_id: int, start_date: datetime, end_date: datetime, meters=5
-    ) -> List[Connection]:
+    ) -> List[ConnectionSchema]:
         """
         Finds all Person who have been within a given distance of a given Person within a date range.
 
@@ -30,8 +33,13 @@ class ConnectionService:
         ).all()
 
         # Cache all users in memory for quick lookup
-        person_map: Dict[str, Person] = {person.id: person for person in PersonService.retrieve_all()}
-
+        #person_map: Dict[str, Person] = {person.id: person for person in PersonService.retrieve_all()}
+        persons = json.loads(requests.get('http://udaconnect-personapi:5001/api/persons').content)
+        person_map = {}
+        for p in persons:
+            person = PersonSchema.from_dict(p)
+            person_map[person.id] = person
+        logger.info('Fetched Persons',len(person_map))
         # Prepare arguments for queries
         data = []
         for location in locations:
@@ -45,7 +53,7 @@ class ConnectionService:
                     "end_date": (end_date + timedelta(days=1)).strftime("%Y-%m-%d"),
                 }
             )
-
+        logger.info('Fetched Locations', len(data))
         query = text(
             """
         SELECT  person_id, id, ST_X(coordinate), ST_Y(coordinate), creation_time
@@ -65,6 +73,7 @@ class ConnectionService:
                 exposed_long,
                 exposed_time,
             ) in db.engine.execute(query, **line):
+                logger.info('Fetched Connection', exposed_person_id, location_id)
                 location = Location(
                     id=location_id,
                     person_id=exposed_person_id,
@@ -77,7 +86,7 @@ class ConnectionService:
                         person=person_map[exposed_person_id], location=location,
                     )
                 )
-
+        logger.info('Final', len(result))
         return result
 
 
@@ -109,26 +118,3 @@ class LocationService:
         db.session.commit()
 
         return new_location
-
-
-class PersonService:
-    @staticmethod
-    def create(person: Dict) -> Person:
-        new_person = Person()
-        new_person.first_name = person["first_name"]
-        new_person.last_name = person["last_name"]
-        new_person.company_name = person["company_name"]
-
-        db.session.add(new_person)
-        db.session.commit()
-
-        return new_person
-
-    @staticmethod
-    def retrieve(person_id: int) -> Person:
-        person = db.session.query(Person).get(person_id)
-        return person
-
-    @staticmethod
-    def retrieve_all() -> List[Person]:
-        return db.session.query(Person).all()
