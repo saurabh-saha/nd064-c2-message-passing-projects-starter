@@ -25,7 +25,7 @@ class ConnectionService:
         large datasets. This is by design: what are some ways or techniques to help make this data integrate more
         smoothly for a better user experience for API consumers?
         """
-        location_url = f'http://127.0.0.1:5000/api/locations/{person_id}/duration?start_date={start_date.strftime(DATE_FORMAT)}&end_date={end_date.strftime(DATE_FORMAT)}'
+        location_url = f'http://udaconnect-location-api:5001/api/locations/{person_id}/duration?start_date={start_date.strftime(DATE_FORMAT)}&end_date={end_date.strftime(DATE_FORMAT)}'
         location_json = json.loads(requests.get(location_url).content)
         locations = [LocationSchema.from_dict(l) for l in location_json]
 
